@@ -5,7 +5,7 @@ import pyperclip
 import urllib.request
 import winsound
 import random
-
+# print(1)
 limit = 7.115
 name = '资金安全审流水'
 # name = '九州安全商行'
