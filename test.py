@@ -1,42 +1,58 @@
-# 第二种方法：解析器方式，利用Python特性创建list
-# 基础list
+"""
+日期：2022年02月11日
+"""
+import asyncio
+import time
+
+import aiohttp
+from fake_useragent import UserAgent
+
+urls = [
+    'https://www.okx.com/v3/c2c/tradingOrders/books?quoteCurrency=CNY&baseCurrency=BTC&side=sell&paymentMethod=all&userType=all&showTrade=false&receivingAds=false&showFollow=false&showAlreadyTraded=false&isAbleFilter=false',
+    'https://www.okx.com/api/v5/market/ticker?instId=BTC-USDT'
+]
+
+ua = UserAgent()
+headers = {'User-Agent': ua.random}
+# headers = {"user-agent": header}
 
 
-
-quoteMaxAmountPerOrder = 31000
-limit = 7.23
-# name = '资金安全审流水'
-name = '九州安全商行'
-
-
-def otcbook(coin):
-    url = 'https://www.okx.com/v3/c2c/tradingOrders/books?quoteCurrency=CNY&baseCurrency=' + coin + '&side=sell&paymentMethod=all&userType=all&showTrade=false&receivingAds=false&showFollow=false&showAlreadyTraded=false&isAbleFilter=false'
-
-    headers = {"User-Agent": ua.random}
-    response = requests.get(url=url, headers=headers)
-    res = response.json()['data']['sell']
-    # print(res)
-    return res
+def get_local_proxy():
+    from urllib.request import getproxies
+    proxy = getproxies()['http']
+    return proxy
 
 
-
-def judge(ask):
-    i = 0
-    ask = otcbook()
-    print(ask)
-    for i in range(10):
-        if float(ask[i]['quoteMaxAmountPerOrder']) < quoteMaxAmountPerOrder and ask[i]['nickName'] != name:
-            # if float(ask[i]['price']) / float(tiker(coin)) <= limit:
-            i = i + 1
-            # print('订单量太低，不抢', ask[i]['nickName'], ask[i]['quoteMaxAmountPerOrder'], i)
-        else:
-            # print(ask[i]['nickName'], ask[i]['quoteMaxAmountPerOrder'], i)
-            break
-    # print(i)
-    return i
+async def get_page(url):
+    async with aiohttp.ClientSession() as session:
+        async with await session.get(url=url, headers=headers, proxy=get_local_proxy()) as responsse:
+            page_json = await responsse.json()
+            # print(page_json)
+    return page_json
 
 
-# 过滤list
-blockList = [640, 588]
-filteredList = [ele for ele in baseList if ele not in blockList]
-print(filteredList)
+def updata():
+    stat = time.time()
+    tasks = []
+    for url in urls:
+        c = get_page(url)
+        task = asyncio.ensure_future(c)
+        tasks.append(task)
+
+    loop = asyncio.get_event_loop()
+    # 异步协程固定写法 创建事件循环
+    loop.run_until_complete(asyncio.wait(tasks))
+
+    end = time.time()
+    print('总耗时：', end - stat)
+
+
+if __name__ == '__main__':
+    while 1:
+        try:
+            updata()
+            print(page_json)
+        except:
+            print('错误00123456')
+            time.sleep(1)
+        time.sleep(5)
