@@ -12,7 +12,7 @@ ua = UserAgent()
 # url = 'https://www.okx.com/v3/c2c/tradingOrders/books?quoteCurrency=CNY&baseCurrency=ETH&side=sell&paymentMethod=all&userType=all&showTrade=false&receivingAds=false&showFollow=false&showAlreadyTraded=false&isAbleFilter=false'
 # TikerUrl = 'https://www.okx.com/api/v5/market/ticker?instId=ETH-USDT'
 quoteMaxAmountPerOrder = 20000
-limit = 7.26
+limit = 7.285
 # name = '资金安全审流水'
 # name1 = '九州安全商行'
 name = '九州安全商行'
@@ -104,9 +104,13 @@ def judge1(ask, coin, ask_price):
 
 def pricing(a, coinLocation):
     fb = pyautogui.locateOnScreen('img/fb.png', confidence=0.9)
-    if coinLocation is None and fb is not None:
+    if coinLocation is None :
         print('没有找到交易对')
-        time.sleep(1)
+        time.sleep(5)
+    elif fb is not None:
+        print('刷新页面')
+        pyautogui.hotkey('F5')
+        time.sleep(5)
     else:
         pyautogui.moveTo(coinLocation, duration=0.1)
         pyautogui.moveRel(1215, 0, duration=0.1)
@@ -162,7 +166,7 @@ def rob(coin):
             winsound.PlaySound("SystemExit", winsound.SND_ALIAS)
         elif float(ask[index[0] + 1]['price']) / float(ask[index[0]]['price']) >= 1.000190 and ask[index[0]][
             'nickName'] == name:
-            num = random.choice([0.05, 0.03])
+            num = random.choice([0.15, 0.23])
             pricing(num, coinLocation)
             print('上调', num)
             time.sleep(5)
