@@ -1,0 +1,222 @@
+import requests
+import time
+import numpy as np
+from fake_useragent import UserAgent
+import pyttsx3
+import math
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.chrome.options import Options
+
+# 全局变量，屏幕右下角的坐标
+bottom_right_x = 1600
+bottom_right_y = 900
+
+
+def connect_to_existing_chrome():
+
+    """连接到已存在的Chrome浏览器"""
+    chrome_options = Options()
+    chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
+    driver = webdriver.Chrome(options=chrome_options)
+    all_windows = driver.window_handles
+    # 定义目标页面的 URL 或标题
+    target_url = "https://www.okx.com/zh-hans/p2p/dashboard"  # 替换为目标页面的 URL
+    target_title = "OKX全球领先的比特币交易平台 | 比特币行情价格 | 欧易"  # 替换为目标页面的标题
+
+    # 遍历窗口句柄并切换到目标窗口
+    for window_handle in all_windows:
+        driver.switch_to.window(window_handle)
+        # 检查当前窗口的 URL 或标题是否匹配目标
+        if driver.current_url == target_url or driver.title == target_title:
+            print("已找到并切换到目标窗口")
+            break
+    else:
+        print("未找到目标窗口")
+    time.sleep(10)
+    return driver
+
+
+def tick(symbol):
+    # symbol.upper()
+    url = "https://www.okx.com/api/v5/market/ticker?instId=" + symbol + "-USDT"
+    headers = {'Content-Type': 'application/json'}
+    response = requests.get(url, headers=headers)
+
+    if response.status_code == 200:
+        return float(response.json()["data"][0]["askPx"])
+    else:
+        return False
+
+
+# bank aliPay wxPay all
+def otc(side, symbol, TransAmount, payment):
+    timestamp = str(int(time.time()))
+    url = "https://www.okx.com/v3/c2c/tradingOrders/books?t=" + timestamp + "&quoteCurrency=CNY&baseCurrency=" + symbol + "&side=" + side + "&paymentMethod=" + payment + "&userType=all&showTrade=false&showFollow=false&showAlreadyTraded=false&isAbleFilter=false&receivingAds=false&quoteMinAmountPerOrder=" + TransAmount
+    ua = UserAgent()
+    headers = {"user-agent": ua.chrome}
+    response = requests.get(url, headers=headers)
+    response_json = response.json()
+    res = np.array(response_json["data"][side])
+    return res
+
+
+def check_sell(SellLimit, symbols, transAmount, nickName, ignoreName):
+    for symbol in symbols:
+        print("=======SELL-" + symbol + " =======")
+        BookOTC = otc('sell', symbol, str(transAmount), "bank")
+        PriceU = tick(symbol)
+        NewBookOTC = [data for data in BookOTC if data['nickName'] == nickName or (data['nickName'] != ignoreName
+                                                                                   and float(
+                    data['price']) / PriceU >= SellLimit)]
+        if not any(data['nickName'] == nickName for data in NewBookOTC):
+            print(symbol + "卖单没有找到订单")
+        else:
+            for index, data in enumerate(NewBookOTC):
+                if data['nickName'] == nickName and index == 0:
+                    i = round(float(data['price']) / PriceU, 3)
+                    print(data['nickName'], data['price'], i, index)
+                    print(NewBookOTC[1]['nickName'], NewBookOTC[1]['price'], 1)
+                    Proportion = float(NewBookOTC[1]['price']) / float(data['price'])
+                    if Proportion > 1.0003:
+                        value = (Proportion - 1) * 100 - 0.01
+                        value = math.floor(value * 100) / 100
+                        print(symbol + "上调" + str(value))
+                        update(driver, '出售 ' + symbol, value)
+                        # engine.say(symbol + "卖单上调" + str(value))
+                        # engine.runAndWait()
+                    break
+                elif data['nickName'] == nickName and index != 0:
+                    i = round(float(data['price']) / PriceU, 3)
+                    print(NewBookOTC[0]['nickName'], NewBookOTC[0]['price'], 0)
+                    print(data['nickName'], data['price'], i, index)
+                    if float(NewBookOTC[0]['price']) / PriceU >= SellLimit / 1.0001:
+                        Proportion = float(data['price']) / float(NewBookOTC[0]['price'])
+                        value = (Proportion - 1) * 100 + 0.01
+                        value = math.ceil(value * 100) / 100
+                        print(symbol + "下调" + str(value))
+                        update(driver, '出售 ' + symbol, value * -1)
+                        # engine.say(symbol + "卖单下调" + str(value))
+                        # engine.runAndWait()
+                    break
+        time.sleep(5)
+
+
+def check_buy(BuyLimit, symbols, transAmount, nickName, ignoreName):
+    for symbol in symbols:
+        print("=======BUY-" + symbol + " =======")
+        # bank aliPay wxPay all
+        BookOTC = otc('buy', symbol, str(transAmount), "wxPay")
+        PriceU = tick(symbol)
+        NewBookOTC = [data for data in BookOTC if data['nickName'] == nickName or (data['nickName'] != ignoreName
+                                                                                   and float(
+                    data['price']) / PriceU <= BuyLimit)]
+        if not any(data['nickName'] == nickName for data in NewBookOTC):
+            print(symbol + "收单没有找到订单")
+        else:
+            for index, data in enumerate(NewBookOTC):
+                if data['nickName'] == nickName and index == 0:
+                    i = round(float(data['price']) / PriceU, 3)
+                    print(data['nickName'], data['price'], i, index)
+                    print(NewBookOTC[1]['nickName'], NewBookOTC[1]['price'], 1)
+                    Proportion = float(data['price']) / float(NewBookOTC[1]['price'])
+                    if Proportion > 1.0003:
+                        value = (Proportion - 1) * 100 - 0.01
+                        value = math.floor(value * 100) / 100
+                        print(symbol + "收单下调" + str(value))
+                        update(driver, '购买 ' + symbol, value * -1)
+
+                    break
+                elif data['nickName'] == nickName and index != 0:
+                    i = round(float(data['price']) / PriceU, 3)
+                    print(NewBookOTC[0]['nickName'], NewBookOTC[0]['price'], 0)
+                    print(data['nickName'], data['price'], i, index)
+                    if float(NewBookOTC[0]['price']) / PriceU <= BuyLimit * 1.0001:
+                        Proportion = float(NewBookOTC[0]['price']) / float(data['price'])
+                        value = (Proportion - 1) * 100 + 0.01
+                        value = math.ceil(value * 100) / 100
+                        print(symbol + "上调" + str(value))
+                        update(driver, '购买 ' + symbol, value)
+
+                    break
+        time.sleep(5)
+
+
+def update(driver, symbol, a):
+    try:
+        # 找到并点击编辑按钮
+        edit_icon = driver.find_element(
+            By.XPATH,
+            f"//b[contains(text(),'{symbol}')]/following::span[contains(@class,'action-item btn-link')]//i[contains(@class,'iconEdit')]"
+        )
+        edit_icon.click()
+        # 等待输入框出现并可交互
+        wait = WebDriverWait(driver, 10)
+        input_element = wait.until(EC.element_to_be_clickable(
+            (By.CSS_SELECTOR, 'div.edit-number input.okui-input-input')
+        ))
+
+        # 获取当前值
+        current_value = input_element.get_attribute('value')
+        if current_value == '':
+            cancel_button = wait.until(EC.element_to_be_clickable(
+                (By.XPATH, "//span[contains(@class, 'btn-link') and text()='取消']")
+            ))
+            cancel_button.click()
+            time.sleep(2)
+        else:
+            try:
+                # 计算新值
+                new_value = float(current_value) + a
+                new_value = round(new_value, 2)
+                print(f"{current_value}--->{new_value}")
+                # 清除并设置新值
+                input_element.click()
+                input_element.send_keys(Keys.CONTROL + "a")
+                input_element.send_keys(Keys.DELETE)
+                driver.execute_script("arguments[0].value = '';", input_element)
+                input_element.send_keys(str(new_value))
+                time.sleep(0.5)
+                # 点击"重新发布"按钮
+                republish_button = wait.until(EC.element_to_be_clickable(
+                    (By.XPATH, "//span[contains(@class, 'btn-link') and text()='重新发布']")
+                ))
+                republish_button.click()
+                time.sleep(1)
+                print("改价完成")
+
+            except ValueError:
+                print(f"无法转换当前值 '{current_value}' 为数字")
+
+    except :
+        engine.say("请切到委托单界面！")
+        engine.runAndWait()
+
+
+if __name__ == '__main__':
+    engine = pyttsx3.init()
+    print("准备连接到已打开的Chrome浏览器...")
+    driver = connect_to_existing_chrome()
+    SellLimit = 7.27
+    BuyLimit = 7.17
+    # nickName = "海鸥薯条"
+    # ignoreName = "资金安全审流水"
+    nickName = "资金安全审流水"
+    ignoreName = "海鸥薯条"
+    SellTransAmount = 0
+    BuyTransAmount = 3000
+
+    sell_symbols = ["BTC", "ETH"]
+    buy_symbols = ["BTC", "ETH"]
+
+    while 1:
+        try:
+            check_sell(SellLimit, sell_symbols, SellTransAmount, nickName, ignoreName)
+            # check_buy(BuyLimit, buy_symbols, BuyTransAmount, nickName, ignoreName)
+            time.sleep(30)
+        except Exception as e:
+            print(e)
+            time.sleep(30)
